@@ -4,28 +4,55 @@ import type { AdminSource, AgentTarget } from "@/types";
 import { getModuleSummariesForPrompt, getCatalogStats } from "@/lib/catalog";
 import { estimateTokens } from "@/lib/tokens";
 
-const STORAGE_DIR = join(process.cwd(), "storage");
-const SOURCES_FILE = join(STORAGE_DIR, "sources.json");
-const UPLOADS_DIR = join(STORAGE_DIR, "uploads");
+function isServerless(): boolean {
+  return Boolean(
+    process.env.VERCEL ||
+      process.env.AWS_LAMBDA_FUNCTION_VERSION ||
+      process.env.AWS_EXECUTION_ENV,
+  );
+}
+
+function getStorageRoot(): string {
+  if (isServerless()) {
+    return join("/tmp", "byoc-assistant-storage");
+  }
+  return join(process.cwd(), "storage");
+}
+
+function getSourcesFile(): string {
+  return join(getStorageRoot(), "sources.json");
+}
+
+function getUploadsDirPath(): string {
+  return join(getStorageRoot(), "uploads");
+}
 
 function ensureStorage() {
-  if (!existsSync(STORAGE_DIR)) mkdirSync(STORAGE_DIR, { recursive: true });
-  if (!existsSync(UPLOADS_DIR)) mkdirSync(UPLOADS_DIR, { recursive: true });
-  if (!existsSync(SOURCES_FILE)) {
-    writeFileSync(SOURCES_FILE, JSON.stringify({ sources: [] }, null, 2));
+  const root = getStorageRoot();
+  const sourcesFile = getSourcesFile();
+  const uploadsDir = getUploadsDirPath();
+
+  if (!existsSync(root)) mkdirSync(root, { recursive: true });
+  if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
+  if (!existsSync(sourcesFile)) {
+    writeFileSync(sourcesFile, JSON.stringify({ sources: [] }, null, 2));
   }
 }
 
 function readSources(): AdminSource[] {
-  ensureStorage();
-  const raw = readFileSync(SOURCES_FILE, "utf-8");
-  const data = JSON.parse(raw) as { sources: AdminSource[] };
-  return data.sources;
+  try {
+    ensureStorage();
+    const raw = readFileSync(getSourcesFile(), "utf-8");
+    const data = JSON.parse(raw) as { sources: AdminSource[] };
+    return data.sources;
+  } catch {
+    return [];
+  }
 }
 
 function writeSources(sources: AdminSource[]) {
   ensureStorage();
-  writeFileSync(SOURCES_FILE, JSON.stringify({ sources }, null, 2));
+  writeFileSync(getSourcesFile(), JSON.stringify({ sources }, null, 2));
 }
 
 function getCanonicalSources(agent: AgentTarget): AdminSource[] {
@@ -115,7 +142,7 @@ export function resetCustomSources(agent?: AgentTarget) {
 
 export function getUploadsDir() {
   ensureStorage();
-  return UPLOADS_DIR;
+  return getUploadsDirPath();
 }
 
 export function getActiveContextForAgent(agent: AgentTarget): string {
@@ -130,4 +157,8 @@ export function getActiveTokenCount(agent: AgentTarget): number {
   return listSources(agent)
     .filter((s) => s.active)
     .reduce((sum, s) => sum + s.estimatedTokens, 0);
+}
+
+export function isEphemeralStorage(): boolean {
+  return isServerless();
 }

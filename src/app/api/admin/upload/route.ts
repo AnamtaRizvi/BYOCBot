@@ -16,10 +16,14 @@ export async function POST(req: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const uploadsDir = getUploadsDir();
-    const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-    const filePath = join(uploadsDir, safeName);
-    writeFileSync(filePath, buffer);
+    let filePath: string | undefined;
+
+    if (!process.env.VERCEL) {
+      const uploadsDir = getUploadsDir();
+      const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+      filePath = join(uploadsDir, safeName);
+      writeFileSync(filePath, buffer);
+    }
 
     let content = "";
     let estimatedTokens = 0;
